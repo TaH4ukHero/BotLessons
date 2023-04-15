@@ -9,51 +9,65 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+START = 1
+desc_first, desc_second, desc_third, desc_fourth = ['Зал искусства Древнего Востока - этот зал '
+                                                    'музея поражает своими экспонатами, представляющими разнообразные культуры и периоды Древнего Востока. Здесь можно увидеть изысканные изделия из фаянса, глины, кости, бронзы и золота, а также узнать об истории керамики, металлургии и других ремеслах в Древней Восточной цивилизации.',
+                                                    'Зал естественной истории - это место, где посетители могут познакомиться с богатым миром животных, растительности и минералов нашей планеты. Здесь вы найдете различные экспонаты, такие как огромные скелеты динозавров, интерактивные показы о жизни отдельных видов животных, а также образцы различных минералов и горных пород.',
+                                                    'Зал современного искусства - место, где можно ознакомиться с работами современных художников и скульпторов. В зале представлены десятки замечательных работ, каждой из которых уделяется много внимания и времени. Сюда часто приходят как профессиональные художники и дизайнеры, так и любители современного искусства.',
+                                                    'Зал истории музыкальных инструментов - этот зал музея представляет удивительную коллекцию '
+                                                    'музыкальных инструментов разных эпох и культур. Здесь вы сможете узнать о секретах создания каждого из огромного количества инструментов, представленных в зале, а также послушать звук каждого из них в специально оборудованной зоне. Этот зал - идеальное место для поклонников музыки всех жанров и возрастов.']
 
-async def start(update, context):
+
+async def choose_hall(update: Update, context):
+    msg = update.message.text
+    if msg == 'Пойти в первый зал':
+        await first_hall(update)
+    if msg == 'Пойти во второй зал':
+        await second_hall(update)
+    if msg == 'Пойти в третий зал':
+        await third_hall(update)
+    if msg == 'Пойти в четвертый зал':
+        await fourth_hall(update)
+    if msg == 'Пойти на выход':
+        await end(update)
+
+
+async def start(update: Update, context):
+    keyboard = ReplyKeyboardMarkup([['Пойти на выход', 'Пойти в первый зал']],
+                                   one_time_keyboard=True, resize_keyboard=True)
     await update.message.reply_text(
-        "Привет. Пройдите небольшой опрос, пожалуйста!\n"
-        "Вы можете прервать опрос, послав команду /stop.\n"
-        "В каком городе вы живёте?")
-
-    # Число-ключ в словаре states —
-    # втором параметре ConversationHandler'а.
-    return 1
-    # Оно указывает, что дальше на сообщения от этого пользователя
-    # должен отвечать обработчик states[1].
-    # До этого момента обработчиков текстовых сообщений
-    # для этого пользователя не существовало,
-    # поэтому текстовые сообщения игнорировались.
+        'Добро пожаловать! Пожалуйста, сдайте верхнюю одежду в гардероб!',
+        reply_markup=keyboard)
+    return START
 
 
-async def skip(update, context):
-    await update.message.reply_text('Какая погода у вас за окном?')
-    return 2
+async def first_hall(update: Update):
+    keyboard = ReplyKeyboardMarkup([['Пойти во второй зал', 'Пойти на выход']],
+                                   resize_keyboard=True, one_time_keyboard=True)
+    await update.message.reply_text(desc_first, reply_markup=keyboard)
 
 
-async def first_response(update, context):
-    # Это ответ на первый вопрос.
-    # Мы можем использовать его во втором вопросе.
-    locality = update.message.text
+async def second_hall(update: Update):
+    keyboard = ReplyKeyboardMarkup([['Пойти в третий зал']],
+                                   resize_keyboard=True, one_time_keyboard=True)
+    await update.message.reply_text(desc_second, reply_markup=keyboard)
+
+
+async def third_hall(update: Update):
+    keyboard = ReplyKeyboardMarkup([['Пойти в четвертый зал', 'Пойти в первый зал']],
+                                   resize_keyboard=True, one_time_keyboard=True)
+    await update.message.reply_text(desc_third, reply_markup=keyboard)
+
+
+async def fourth_hall(update: Update):
+    keyboard = ReplyKeyboardMarkup([['Пойти на выход']],
+                                   resize_keyboard=True, one_time_keyboard=True)
+    await update.message.reply_text(desc_fourth, reply_markup=keyboard)
+
+
+async def end(update: Update):
     await update.message.reply_text(
-        f"Какая погода в городе {locality}?")
-    # Следующее текстовое сообщение будет обработано
-    # обработчиком states[2]
-    return 2
-
-
-async def second_response(update, context):
-    # Ответ на второй вопрос.
-    # Мы можем его сохранить в базе данных или переслать куда-либо.
-    weather = update.message.text
-    logger.info(weather)
-    await update.message.reply_text("Спасибо за участие в опросе! Всего доброго!")
-    return ConversationHandler.END  # Константа, означающая конец диалога.
-    # Все обработчики из states и fallbacks становятся неактивными.
-
-
-async def stop(update, context):
-    await update.message.reply_text("Всего доброго!")
+        'Всего доброго, не забудьте забрать верхнюю одежду в гардеробе!')
     return ConversationHandler.END
 
 
@@ -61,23 +75,13 @@ if __name__ == '__main__':
     app = Application.builder().token(BOT_TOKEN).build()
 
     conv_handler = ConversationHandler(
-        # Точка входа в диалог.
-        # В данном случае — команда /start. Она задаёт первый вопрос.
         entry_points=[CommandHandler('start', start)],
-
-        # Состояние внутри диалога.
-        # Вариант с двумя обработчиками, фильтрующими текстовые сообщения.
         states={
-            # Функция читает ответ на первый вопрос и задаёт второй.
-            1: [MessageHandler(filters.TEXT & ~filters.COMMAND, first_response),
-                CommandHandler('skip', skip)],
-            # Функция читает ответ на второй вопрос и завершает диалог.
-            2: [MessageHandler(filters.TEXT & ~filters.COMMAND, second_response)]
+            START: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_hall)]
         },
-
-        # Точка прерывания диалога. В данном случае — команда /stop.
-        fallbacks=[CommandHandler('stop', stop)]
+        fallbacks=[CommandHandler('exit', end)]
     )
 
     app.add_handler(conv_handler)
+
     app.run_polling()
