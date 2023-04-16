@@ -9,65 +9,50 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-START = 1
-desc_first, desc_second, desc_third, desc_fourth = ['Зал искусства Древнего Востока - этот зал '
-                                                    'музея поражает своими экспонатами, представляющими разнообразные культуры и периоды Древнего Востока. Здесь можно увидеть изысканные изделия из фаянса, глины, кости, бронзы и золота, а также узнать об истории керамики, металлургии и других ремеслах в Древней Восточной цивилизации.',
-                                                    'Зал естественной истории - это место, где посетители могут познакомиться с богатым миром животных, растительности и минералов нашей планеты. Здесь вы найдете различные экспонаты, такие как огромные скелеты динозавров, интерактивные показы о жизни отдельных видов животных, а также образцы различных минералов и горных пород.',
-                                                    'Зал современного искусства - место, где можно ознакомиться с работами современных художников и скульпторов. В зале представлены десятки замечательных работ, каждой из которых уделяется много внимания и времени. Сюда часто приходят как профессиональные художники и дизайнеры, так и любители современного искусства.',
-                                                    'Зал истории музыкальных инструментов - этот зал музея представляет удивительную коллекцию '
-                                                    'музыкальных инструментов разных эпох и культур. Здесь вы сможете узнать о секретах создания каждого из огромного количества инструментов, представленных в зале, а также послушать звук каждого из них в специально оборудованной зоне. Этот зал - идеальное место для поклонников музыки всех жанров и возрастов.']
-
-
-async def choose_hall(update: Update, context):
-    msg = update.message.text
-    if msg == 'Пойти в первый зал':
-        await first_hall(update)
-    if msg == 'Пойти во второй зал':
-        await second_hall(update)
-    if msg == 'Пойти в третий зал':
-        await third_hall(update)
-    if msg == 'Пойти в четвертый зал':
-        await fourth_hall(update)
-    if msg == 'Пойти на выход':
-        await end(update)
+poem = """Последняя туча рассеянной бури!
+Одна ты несешься по ясной лазури,
+Одна ты наводишь унылую тень,
+Одна ты печалишь ликующий день.
+Ты небо недавно кругом облегала,
+И молния грозно тебя обвивала;
+И ты издавала таинственный гром
+И алчную землю поила дождем.
+Довольно, сокройся! Пора миновалась,
+Земля освежилась, и буря промчалась,
+И ветер, лаская листочки древес,
+Тебя с успокоенных гонит небес.""".split('\n')
 
 
 async def start(update: Update, context):
-    keyboard = ReplyKeyboardMarkup([['Пойти на выход', 'Пойти в первый зал']],
-                                   one_time_keyboard=True, resize_keyboard=True)
-    await update.message.reply_text(
-        'Добро пожаловать! Пожалуйста, сдайте верхнюю одежду в гардероб!',
-        reply_markup=keyboard)
-    return START
+    context.user_data["number"] = 1
+    await update.message.reply_text(poem[0])
+    return 1
 
 
-async def first_hall(update: Update):
-    keyboard = ReplyKeyboardMarkup([['Пойти во второй зал', 'Пойти на выход']],
-                                   resize_keyboard=True, one_time_keyboard=True)
-    await update.message.reply_text(desc_first, reply_markup=keyboard)
+async def suphler(update, context):
+    await update.message.reply_text(f'Нет не так\nСледующая строка начинается с\n'
+                                    f'{poem[context.user_data["number"]][:10]}...')
 
 
-async def second_hall(update: Update):
-    keyboard = ReplyKeyboardMarkup([['Пойти в третий зал']],
-                                   resize_keyboard=True, one_time_keyboard=True)
-    await update.message.reply_text(desc_second, reply_markup=keyboard)
+async def handler(update: Update, context):
+    msg = update.message.text
+    if context.user_data["number"] == len(poem):
+        print(context.user_data["number"], str(len(poem)), poem)
+        await update.message.reply_text('Я рад что ты смог! Не хочешь повторить?')
+        return ConversationHandler.END
+    if msg == poem[context.user_data["number"]]:
+        context.user_data["number"] += 2
+        if context.user_data["number"] >= len(poem):
+            await update.message.reply_text('Я рад что ты смог! Не хочешь повторить?')
+            return ConversationHandler.END
+        await update.message.reply_text(
+            poem[context.user_data["number"] - 1])
+        return
+    await suphler(update, context)
 
 
-async def third_hall(update: Update):
-    keyboard = ReplyKeyboardMarkup([['Пойти в четвертый зал', 'Пойти в первый зал']],
-                                   resize_keyboard=True, one_time_keyboard=True)
-    await update.message.reply_text(desc_third, reply_markup=keyboard)
-
-
-async def fourth_hall(update: Update):
-    keyboard = ReplyKeyboardMarkup([['Пойти на выход']],
-                                   resize_keyboard=True, one_time_keyboard=True)
-    await update.message.reply_text(desc_fourth, reply_markup=keyboard)
-
-
-async def end(update: Update):
-    await update.message.reply_text(
-        'Всего доброго, не забудьте забрать верхнюю одежду в гардеробе!')
+async def stop(update: Update, context):
+    await update.message.reply_text('Конечная')
     return ConversationHandler.END
 
 
@@ -77,9 +62,10 @@ if __name__ == '__main__':
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
-            START: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_hall)]
+            1: [MessageHandler(filters.TEXT & ~filters.COMMAND, handler),
+                CommandHandler('suphler', suphler)]
         },
-        fallbacks=[CommandHandler('exit', end)]
+        fallbacks=[CommandHandler('stop', stop)]
     )
 
     app.add_handler(conv_handler)
