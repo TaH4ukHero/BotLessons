@@ -3,7 +3,7 @@ import os.path
 
 import requests
 
-from config import BOT_TOKEN_TG as BOT_TOKEN
+from config import *
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import Application, ConversationHandler, CommandHandler, MessageHandler, \
     filters, ContextTypes
@@ -16,65 +16,72 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+DIALOG = 1
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        'Здравствуйте. Введите координаты (через запятую) или название искомого топонима')
+    await update.message.reply_text('Здравствуйте, я бот-переводчик. Введите слово и я его переведу'
+                                    '\nСейчас перевод с руского на английский язык')
+    context.user_data["target"] = 'en'
+    return DIALOG
 
 
-def geo(toponym):
-    params = {
-        'geocode': toponym,
-        "apikey": "40d1649f-0493-4b70-98ba-98533de7710b",
-        'format': 'json'
+def translate(text, target):
+    headers = {
+        "content-type": "application/x-www-form-urlencoded",
+        "Accept-Encoding": "application/gzip",
+        "X-RapidAPI-Key": RapidApiKey,
+        "X-RapidAPI-Host": "google-translate1.p.rapidapi.com"
     }
-    r = requests.get(url='https://geocode-maps.yandex.ru/1.x', params=params)
-    if r.status_code != 200:
-        return False
-    try:
-        if not r.json()["response"]["GeoObjectCollection"]["featureMember"][0]:
-            return False
-    except Exception:
-        return False
-    return r.json()["response"]["GeoObjectCollection"]["featureMember"][0]["GeoObject"]["Point"][
-        'pos'].split()
-
-
-def maps(toponym, name, z=20):
-    if not toponym:
-        return False
+    url = "https://google-translate1.p.rapidapi.com/language/translate/v2"
     params = {
-        'l': 'map',
-        'll': ','.join(toponym),
-        'apikey': '40d1649f-0493-4b70-98ba-98533de7710b',
-        'pt': f'{toponym[0]},{toponym[1]},pmwtm50',
-        'z': z
+        'q': text,
+        'target': target,
+        'source': ''
     }
-    r = requests.get(url='https://static-maps.yandex.ru/1.x/', params=params)
-    print(r)
-    with open(f"{name}.png", 'wb') as f:
-        f.write(r.content)
-
-
-async def geo_(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message.text
-    if all(msg.split(',')) and len(msg.split(',')) == 2:
-        toponym = msg.split(',')
-        maps(toponym, f'map_{update.effective_user.id}_')
+    if target == 'en':
+        params["source"] = 'ru'
+        r = requests.request("POST", url, data=params, headers=headers).json()
     else:
-        maps(geo(msg), f'map_{update.effective_user.id}_', z=10)
-    if not os.path.exists(f'map_{update.effective_user.id}_.png'):
-        await update.message.reply_text('Ничего не найдено')
-        return
-    await update.message.reply_photo(f'map_{update.effective_user.id}_.png',
-                                     caption=f'Карта по запросу {msg}')
+        params["source"] = 'en'
+        r = requests.request("POST", url, data=params, headers=headers).json()
+    return r["data"]['translations'][0]["translatedText"]
+
+
+async def reply_translate(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = ReplyKeyboardMarkup([['Переводить с русского на английский'],
+                                    ['Переводить с английского на русский']], resize_keyboard=True)
+    if 'Переводить с русского на английский' == update.message.text:
+        context.user_data["target"] = 'en'
+        await update.message.reply_text('Курс поменян')
+    elif 'Переводить с английского на русский' == update.message.text:
+        context.user_data["target"] = 'ru'
+        await update.message.reply_text('Курс поменян')
+    else:
+        text = translate(update.message.text, context.user_data["target"])
+        if text == update.message.text:
+            await update.message.reply_text('Перевод не удался. Проверьте правильность ввода')
+            return
+        await update.message.reply_html(f"Перевод завершен\nРезультат - <b>{text}</b>",
+                                        reply_markup=keyboard)
+
+
+async def stop(update, context):
+    await update.message.reply_text('Завершение работы...')
 
 
 if __name__ == '__main__':
-    app = Application.builder().token(BOT_TOKEN).build()
-    bot = Bot(BOT_TOKEN)
+    app = Application.builder().token(BOT_TOKEN_TG).build()
+    bot = Bot(BOT_TOKEN_TG)
 
-    app.add_handler(CommandHandler('start', start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, geo_))
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('start', start)],
+        states={
+            DIALOG: [MessageHandler(filters.TEXT & ~filters.COMMAND, reply_translate)]
+        },
+        fallbacks=[CommandHandler('stop', stop)]
+    )
+
+    app.add_handler(conv_handler)
 
     app.run_polling()
