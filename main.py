@@ -1,7 +1,12 @@
 import logging
+import os.path
+
+import requests
+
 from config import BOT_TOKEN_TG as BOT_TOKEN
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from telegram.ext import Application, ConversationHandler, CommandHandler, MessageHandler, filters
+from telegram.ext import Application, ConversationHandler, CommandHandler, MessageHandler, \
+    filters, ContextTypes
 from telegram import Bot
 import json
 
@@ -11,71 +16,65 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-bot = Bot(BOT_TOKEN)
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        'Здравствуйте. Введите координаты (через запятую) или название искомого топонима')
 
 
-def results(context):
-    context = context.user_data
-    n = context["n_of_tests"]
-    correct = context["correct_answers"]
-    return f"Всего вопросов было - {n if n < 10 else 10}\nПравильно отвеченные - " \
-           f"{correct}"
+def geo(toponym):
+    params = {
+        'geocode': toponym,
+        "apikey": "40d1649f-0493-4b70-98ba-98533de7710b",
+        'format': 'json'
+    }
+    r = requests.get(url='https://geocode-maps.yandex.ru/1.x', params=params)
+    if r.status_code != 200:
+        return False
+    try:
+        if not r.json()["response"]["GeoObjectCollection"]["featureMember"][0]:
+            return False
+    except Exception:
+        return False
+    return r.json()["response"]["GeoObjectCollection"]["featureMember"][0]["GeoObject"]["Point"][
+        'pos'].split()
 
 
-async def get_tests(update: Update, context):
-    document = update.message.document
-    file = await bot.get_file(document.file_id)
-    await file.download_to_drive('data/tests.json')
-    with open('data/tests.json', encoding='utf8') as f:
-        tests = json.load(f)
-        context.user_data["tests"] = tests["test"]
-        context.user_data["n_of_tests"] = len(tests["test"])
+def maps(toponym, name, z=20):
+    if not toponym:
+        return False
+    params = {
+        'l': 'map',
+        'll': ','.join(toponym),
+        'apikey': '40d1649f-0493-4b70-98ba-98533de7710b',
+        'pt': f'{toponym[0]},{toponym[1]},pmwtm50',
+        'z': z
+    }
+    r = requests.get(url='https://static-maps.yandex.ru/1.x/', params=params)
+    print(r)
+    with open(f"{name}.png", 'wb') as f:
+        f.write(r.content)
 
 
-async def start(update: Update, context):
-    context.user_data["curr_question"] = context.user_data['tests'].pop()
-    context.user_data["correct_answers"] = 0
-    context.user_data["answered_questions"] = 0
-    await update.message.reply_text('Не желаете ли Вы пройти тест по всеобщим знаниям?\nПервый '
-                                    f'вопрос\n'
-                                    f'{context.user_data["curr_question"]["question"]}')
-    return 1
-
-
-async def get_answer(update: Update, context):
+async def geo_(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message.text
-    if msg == context.user_data["curr_question"]["response"]:
-        await update.message.reply_text('Правильно!')
-        context.user_data["correct_answers"] += 1
+    if all(msg.split(',')) and len(msg.split(',')) == 2:
+        toponym = msg.split(',')
+        maps(toponym, f'map_{update.effective_user.id}_')
     else:
-        await update.message.reply_text('К сожалению неправильно(')
-    context.user_data["answered_questions"] += 1
-    if not context.user_data["tests"] or context.user_data["answered_questions"] == 10:
-        await update.message.reply_text('Все вопросы закончились. Подвожу итоги...')
-        await update.message.reply_text(results(context))
+        maps(geo(msg), f'map_{update.effective_user.id}_', z=10)
+    if not os.path.exists(f'map_{update.effective_user.id}_.png'):
+        await update.message.reply_text('Ничего не найдено')
         return
-    await update.message.reply_text('Следующий вопрос!')
-    context.user_data["curr_question"] = context.user_data['tests'].pop()
-    await update.message.reply_text(context.user_data["curr_question"]["question"])
-
-
-async def stop(update: Update, context):
-    await update.message.reply_text('Конечная')
-    return ConversationHandler.END
+    await update.message.reply_photo(f'map_{update.effective_user.id}_.png',
+                                     caption=f'Карта по запросу {msg}')
 
 
 if __name__ == '__main__':
     app = Application.builder().token(BOT_TOKEN).build()
+    bot = Bot(BOT_TOKEN)
 
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
-        states={
-            1: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_answer)]
-        },
-        fallbacks=[CommandHandler('stop', stop)]
-    )
-
-    app.add_handler(conv_handler)
-    app.add_handler(MessageHandler(filters.Document.ALL, get_tests))
+    app.add_handler(CommandHandler('start', start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, geo_))
 
     app.run_polling()
