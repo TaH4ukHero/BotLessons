@@ -1,13 +1,11 @@
 import asyncio
-
+import requests
+from discord.ext import commands
 import discord
 import logging
-
-import requests
-
 from config import *
 
-logger = logging.getLogger('http.discord')
+logger = logging.getLogger('discord')
 logger.setLevel(logging.DEBUG)
 handler = logging.StreamHandler()
 handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
@@ -15,32 +13,53 @@ logger.addHandler(handler)
 
 TOKEN = BOT_TOKEN_DISCORD  # вставь свой токен
 
-
-class YLBotClient(discord.Client):
-    async def on_ready(self):
-        logger.info(f'{self.user} has connected to Discord!')
-        for guild in self.guilds:
-            logger.info(
-                f'{self.user} подключились к чату:\n'
-                f'{guild.name}(id: {guild.id})')
-
-    async def on_member_join(self, member):
-        await member.create_dm()
-        await member.dm_channel.send(
-            f'Привет, {member.name}!'
-        )
-
-    async def on_message(self, message: discord.Message):
-        if 'set_timer' in message.content.lower():
-            msg = message.content.lower()
-            hours, minutes = int(msg.split()[2]), int(msg.split()[4])
-            due = hours * 3600 + minutes * 60
-            await message.channel.send(f'The timer should start in {hours} hours and {minutes} '
-                                       f'minutes.')
-            await asyncio.sleep(due)
-            await message.channel.send('Time X has come')
-
-
 intents = discord.Intents.all()
-client = YLBotClient(intents=intents)
-client.run(TOKEN)
+
+bot = commands.Bot(command_prefix='!', intents=intents)
+
+
+def translate(text, target, source):
+    headers = {
+        "content-type": "application/x-www-form-urlencoded",
+        "Accept-Encoding": "application/gzip",
+        "X-RapidAPI-Key": RapidApiKey,
+        "X-RapidAPI-Host": "google-translate1.p.rapidapi.com"
+    }
+    url = "https://google-translate1.p.rapidapi.com/language/translate/v2"
+    params = {
+        'q': text,
+        'target': target,
+        'source': source
+    }
+    r = requests.request("POST", url, data=params, headers=headers).json()
+    return r["data"]['translations'][0]["translatedText"]
+
+
+class BotTranslate(commands.Cog):
+    def __int__(self, bot):
+        self.bot = bot
+        # Я не понимаю почему при инициалазации он не видит эти переменные
+        self.source, self.target = 'en', 'ru'
+
+    @commands.command(name='help_bot')
+    async def help(self, ctx):
+        await ctx.send('"!set_lang" - смена направления перевода в формате "с какого"-"на какой"'
+                       'по стандарту "en-ru"\n"!text" - ввод слова для перевода')
+
+    @commands.command(name='set_lang')
+    async def set_lang(self, ctx, direction: str):
+        self.source, self.target = direction.split('-')
+        await ctx.send(f'Курс поменян. Текущий - {self.source}-{self.target}')
+
+    @commands.command(name='text')
+    async def text(self, ctx, word):
+        await ctx.send(translate(word, self.target, self.source))
+
+
+async def main():
+    cog = BotTranslate(bot)
+    await bot.add_cog(cog)
+    await bot.start(TOKEN)
+
+
+asyncio.run(main())
