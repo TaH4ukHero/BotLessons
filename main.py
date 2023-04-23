@@ -1,3 +1,5 @@
+import asyncio
+
 import discord
 import logging
 
@@ -29,13 +31,14 @@ class YLBotClient(discord.Client):
         )
 
     async def on_message(self, message: discord.Message):
-        if 'кот' in message.content.lower():
-            r = requests.get('https://api.thecatapi.com/v1/images/search').json()[0]
-            logger.info(r)
-            await message.channel.send(r["url"])
-        elif 'собак' in message.content.lower():
-            r = requests.get('https://dog.ceo/api/breeds/image/random').json()
-            await message.channel.send(r["message"])
+        if 'set_timer' in message.content.lower():
+            msg = message.content.lower()
+            hours, minutes = int(msg.split()[2]), int(msg.split()[4])
+            due = hours * 3600 + minutes * 60
+            await message.channel.send(f'The timer should start in {hours} hours and {minutes} '
+                                       f'minutes.')
+            await asyncio.sleep(due)
+            await message.channel.send('Time X has come')
 
 
 intents = discord.Intents.all()
